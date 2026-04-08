@@ -28,7 +28,6 @@ FORZE = ["Debole", "Media", "Forte", "Fortissima"]
 NUTRIZIONI = ["Nessuna", "Candito", "Sciroppo", "Altro"]
 MAG_CATEGORIE = ["Fogli cerei", "Telaini", "Melari", "Barattoli", "Nutrizione", "Attrezzatura", "Altro"]
 UNITA = ["pz", "kg", "confezioni", "litri", "altro"]
-
 PAGES = ["Home", "Overview arnie", "Scheda arnia", "Overview magazzino", "Nuovo controllo", "Consiglio AI", "Magazzino", "Export Excel"]
 
 st.markdown("""
@@ -155,9 +154,11 @@ if "page_choice" not in st.session_state:
     st.session_state["page_choice"] = "Home"
 
 st.title("🐝 Bee Honey")
-st.caption("Apiario, overview arnie, overview magazzino e scheda dedicata per ogni arnia.")
+st.caption("Correzione errore di navigazione della scheda arnia.")
 
-page = st.sidebar.selectbox("Menu", PAGES, index=PAGES.index(st.session_state["page_choice"]) if st.session_state["page_choice"] in PAGES else 0, key="page_choice")
+default_index = PAGES.index(st.session_state["page_choice"]) if st.session_state["page_choice"] in PAGES else 0
+page = st.sidebar.selectbox("Menu", PAGES, index=default_index)
+st.session_state["page_choice"] = page
 
 if page == "Home":
     latest = latest_controls(controlli)
@@ -174,6 +175,7 @@ if page == "Home":
       </div>
     </div>
     """, unsafe_allow_html=True)
+
     st.markdown('<div class="section-title">Le tue arnie</div>', unsafe_allow_html=True)
     cols = st.columns(2)
     for i, hive in enumerate(ARNIE):
@@ -260,19 +262,6 @@ if page == "Scheda arnia":
             st.info(f"Prossimo controllo suggerito: **{next_visit}**")
         st.markdown("### Storico controlli")
         st.dataframe(hive_df[["data_controllo","forza_colonia","telaini_coperti","celle_reali","regina_nuova","melario_presente","melario_percento","api_nervose","prossimo_controllo","note"]], use_container_width=True, hide_index=True)
-        hive_df["telaini_num"] = to_num(hive_df["telaini_coperti"])
-        hive_df["melario_num"] = to_num(hive_df["melario_percento"])
-        c1, c2 = st.columns(2)
-        with c1:
-            chart1 = hive_df[["data_controllo_dt","telaini_num"]].dropna().set_index("data_controllo_dt").sort_index()
-            if not chart1.empty:
-                st.markdown("### Andamento telaini")
-                st.line_chart(chart1)
-        with c2:
-            chart2 = hive_df[["data_controllo_dt","melario_num"]].dropna().set_index("data_controllo_dt").sort_index()
-            if not chart2.empty:
-                st.markdown("### Andamento melario %")
-                st.line_chart(chart2)
 
 if page == "Overview magazzino":
     st.subheader("Overview magazzino")
