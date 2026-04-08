@@ -81,18 +81,21 @@ def bool_si_no(val):
 def to_num(series):
     return pd.to_numeric(series, errors="coerce").fillna(0)
 
+def as_bool(value):
+    return str(value) == "True"
+
 def analyze_control(row):
     alerts, suggestions, next_days = [], [], []
     forza = str(row.get("forza_colonia", ""))
     telaini = pd.to_numeric(pd.Series([row.get("telaini_coperti", 0)]), errors="coerce").fillna(0).iloc[0]
-    covata_fresca = str(row.get("covata_fresca", "")) == "True"
-    covata_opercolata = str(row.get("covata_opercolata", "")) == "True"
-    celle_reali = str(row.get("celle_reali", "")) == "True"
-    regina_vista = str(row.get("regina_vista", "")) == "True"
-    regina_nuova = str(row.get("regina_nuova", "")) == "True"
-    melario = str(row.get("melario_presente", "")) == "True"
+    covata_fresca = as_bool(row.get("covata_fresca", ""))
+    covata_opercolata = as_bool(row.get("covata_opercolata", ""))
+    celle_reali = as_bool(row.get("celle_reali", ""))
+    regina_vista = as_bool(row.get("regina_vista", ""))
+    regina_nuova = as_bool(row.get("regina_nuova", ""))
+    melario = as_bool(row.get("melario_presente", ""))
     melario_pct = pd.to_numeric(pd.Series([row.get("melario_percento", 0)]), errors="coerce").fillna(0).iloc[0]
-    api_nervose = str(row.get("api_nervose", "")) == "True"
+    api_nervose = as_bool(row.get("api_nervose", ""))
     nutrizione = str(row.get("nutrizione", ""))
 
     if celle_reali and (forza in ["Forte", "Fortissima"] or telaini >= 8):
@@ -155,7 +158,7 @@ offerte = load_csv(FILES["offerte"], OFFERTE_COLS)
 st.title("🐝 Bee Honey")
 st.caption("Apiario, scorte, miele, bilancio, offerte e consigli automatici.")
 
-menu = st.sidebar.radio("Menu", ["Home", "Arnie", "Nuovo controllo", "Consiglio dell'esperto", "Gestione controlli", "Magazzino", "Miele invasettato", "Vendite", "Bilancio", "Bee Deals", "Export Excel"])
+menu = st.sidebar.radio("Menu", ["Home", "Arnie", "Nuovo controllo", "Consiglio dell' AI", "Gestione controlli", "Magazzino", "Miele invasettato", "Vendite", "Bilancio", "Bee Deals", "Export Excel"])
 
 if menu == "Home":
     c1, c2, c3, c4 = st.columns(4)
@@ -210,8 +213,8 @@ if menu == "Nuovo controllo":
             save_csv(controlli, FILES["controlli"])
             st.success("Controllo salvato.")
 
-if menu == "Consiglio dell'esperto":
-    st.subheader("Consiglio dell'esperto")
+if menu == "Consiglio dell'AI":
+    st.subheader("Consiglio dell'AI")
     st.caption("Suggerimenti automatici basati sui dati dei tuoi controlli.")
     if controlli.empty:
         st.info("Salva almeno un controllo per avere consigli.")
@@ -242,17 +245,77 @@ if menu == "Gestione controlli":
         st.dataframe(controlli_view.drop(columns=["data_controllo_dt"]), use_container_width=True, hide_index=True)
 
         options = [f"{row['arnia']} · {row['data_controllo']} · {row['id'][:8]}" for _, row in controlli_view.iterrows()]
-        selected_delete = st.selectbox("Seleziona un controllo da cancellare", options)
-        selected_id = controlli_view.iloc[options.index(selected_delete)]["id"]
+        selected_item = st.selectbox("Seleziona un controllo", options)
+        selected_row = controlli_view.iloc[options.index(selected_item)]
+        selected_id = selected_row["id"]
 
-        confirm = st.checkbox("Confermo che voglio cancellare questo controllo")
-        if st.button("Cancella controllo"):
-            if not confirm:
-                st.warning("Metti la spunta di conferma prima di cancellare.")
-            else:
-                controlli = controlli[controlli["id"] != selected_id].copy()
-                save_csv(controlli, FILES["controlli"])
-                st.success("Controllo cancellato. Ricarica la pagina per vedere la lista aggiornata.")
+        tab_mod, tab_del = st.tabs(["Modifica", "Cancella"])
+
+        with tab_mod:
+            st.markdown("### Modifica controllo")
+            with st.form("modifica_controllo"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    arnia = st.selectbox("Arnia", ARNIE, index=ARNIE.index(selected_row["arnia"]) if selected_row["arnia"] in ARNIE else 0, key="mod_arnia")
+                    data_controllo = st.date_input("Data controllo", value=pd.to_datetime(selected_row["data_controllo"]).date(), format="DD/MM/YYYY", key="mod_data")
+                    prossimo_controllo = st.date_input("Prossimo controllo", value=pd.to_datetime(selected_row["prossimo_controllo"]).date() if str(selected_row["prossimo_controllo"]) else date.today(), format="DD/MM/YYYY", key="mod_prossimo")
+                    forza_colonia = st.selectbox("Forza colonia", ["Debole", "Media", "Forte", "Fortissima"], index=["Debole", "Media", "Forte", "Fortissima"].index(selected_row["forza_colonia"]) if selected_row["forza_colonia"] in ["Debole", "Media", "Forte", "Fortissima"] else 1, key="mod_forza")
+                    telaini_coperti = st.slider("Telaini coperti", 0, 10, int(float(selected_row["telaini_coperti"])) if str(selected_row["telaini_coperti"]) else 0, key="mod_telaini")
+                with c2:
+                    melario_presente = st.checkbox("Melario presente", value=as_bool(selected_row["melario_presente"]), key="mod_melario")
+                    melario_percento = st.slider("Melario pieno %", 0, 100, int(float(selected_row["melario_percento"])) if str(selected_row["melario_percento"]) else 0, key="mod_melario_pct")
+                    covata_fresca = st.checkbox("Covata fresca", value=as_bool(selected_row["covata_fresca"]), key="mod_covata_fresca")
+                    covata_opercolata = st.checkbox("Covata opercolata", value=as_bool(selected_row["covata_opercolata"]), key="mod_covata_opercolata")
+                    celle_reali = st.checkbox("Celle reali", value=as_bool(selected_row["celle_reali"]), key="mod_celle")
+                    regina_vista = st.checkbox("Regina vista", value=as_bool(selected_row["regina_vista"]), key="mod_regina")
+                    regina_nuova = st.checkbox("Regina nuova / sospetta nuova", value=as_bool(selected_row["regina_nuova"]), key="mod_regina_nuova")
+                    api_nervose = st.checkbox("Api nervose", value=as_bool(selected_row["api_nervose"]), key="mod_nervose")
+                nutrizione_options = ["Nessuna", "Candito", "Sciroppo", "Altro"]
+                nutrizione = st.selectbox("Nutrizione", nutrizione_options, index=nutrizione_options.index(selected_row["nutrizione"]) if selected_row["nutrizione"] in nutrizione_options else 0, key="mod_nutrizione")
+                note = st.text_area("Note", value=str(selected_row["note"]) if str(selected_row["note"]) != "nan" else "", height=180, key="mod_note")
+
+                saved_mod = st.form_submit_button("Salva modifiche")
+                if saved_mod:
+                    idx = controlli.index[controlli["id"] == selected_id]
+                    if len(idx) > 0:
+                        i = idx[0]
+                        controlli.at[i, "arnia"] = arnia
+                        controlli.at[i, "data_controllo"] = str(data_controllo)
+                        controlli.at[i, "prossimo_controllo"] = str(prossimo_controllo)
+                        controlli.at[i, "forza_colonia"] = forza_colonia
+                        controlli.at[i, "telaini_coperti"] = telaini_coperti
+                        controlli.at[i, "melario_presente"] = melario_presente
+                        controlli.at[i, "melario_percento"] = melario_percento
+                        controlli.at[i, "covata_fresca"] = covata_fresca
+                        controlli.at[i, "covata_opercolata"] = covata_opercolata
+                        controlli.at[i, "celle_reali"] = celle_reali
+                        controlli.at[i, "regina_vista"] = regina_vista
+                        controlli.at[i, "regina_nuova"] = regina_nuova
+                        controlli.at[i, "api_nervose"] = api_nervose
+                        controlli.at[i, "nutrizione"] = nutrizione
+                        controlli.at[i, "note"] = note
+                        save_csv(controlli, FILES["controlli"])
+                        st.success("Controllo modificato.")
+                        updated_row = controlli.loc[i]
+                        alerts, suggestions, next_visit = analyze_control(updated_row)
+                        st.markdown("### Nuovo consiglio dell'AI")
+                        for level, text in alerts:
+                            css = "bee-ok" if level == "ok" else "bee-warn" if level == "warn" else "bee-danger"
+                            st.markdown(f'<div class="{css}">{text}</div>', unsafe_allow_html=True)
+                        for s in dict.fromkeys(suggestions):
+                            st.write(f"- {s}")
+                        st.info(f"Prossimo controllo suggerito: **{next_visit}**")
+
+        with tab_del:
+            st.markdown("### Cancella controllo")
+            confirm = st.checkbox("Confermo che voglio cancellare questo controllo")
+            if st.button("Cancella controllo"):
+                if not confirm:
+                    st.warning("Metti la spunta di conferma prima di cancellare.")
+                else:
+                    controlli = controlli[controlli["id"] != selected_id].copy()
+                    save_csv(controlli, FILES["controlli"])
+                    st.success("Controllo cancellato. Ricarica la pagina per vedere la lista aggiornata.")
 
 if menu == "Magazzino":
     st.subheader("Magazzino e acquisti")
