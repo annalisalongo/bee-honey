@@ -1,4 +1,4 @@
-import io
+aimport io
 import json
 import uuid
 from datetime import date, timedelta
@@ -28,7 +28,7 @@ FORZE = ["Debole", "Media", "Forte", "Fortissima"]
 NUTRIZIONI = ["Nessuna", "Candito", "Sciroppo", "Altro"]
 MAG_CATEGORIE = ["Fogli cerei", "Telaini", "Melari", "Barattoli", "Nutrizione", "Attrezzatura", "Altro"]
 UNITA = ["pz", "kg", "confezioni", "litri", "altro"]
-PAGES = ["Home", "Overview arnie", "Scheda arnia", "Overview magazzino", "Nuovo controllo", "Consiglio AI", "Magazzino", "Export Excel"]
+PAGES = ["Home", "Overview arnie", "Scheda arnia", "Gestione controlli", "Overview magazzino", "Nuovo controllo", "Consiglio AI", "Magazzino", "Export Excel"]
 
 st.markdown("""
 <style>
@@ -76,6 +76,10 @@ def euro(value):
         return f"€ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
         return "€ 0,00"
+
+def safe_date(value):
+    dt = pd.to_datetime(value, errors="coerce")
+    return dt.date() if pd.notna(dt) else date.today()
 
 def save_uploaded_files(files, folder_name: str, data_rif: str):
     paths = []
@@ -154,7 +158,7 @@ if "page_choice" not in st.session_state:
     st.session_state["page_choice"] = "Home"
 
 st.title("🐝 Bee Honey")
-st.caption("Correzione errore di navigazione della scheda arnia.")
+st.caption("Versione completa con modifica ed elimina controllo.")
 
 default_index = PAGES.index(st.session_state["page_choice"]) if st.session_state["page_choice"] in PAGES else 0
 page = st.sidebar.selectbox("Menu", PAGES, index=default_index)
@@ -175,8 +179,6 @@ if page == "Home":
       </div>
     </div>
     """, unsafe_allow_html=True)
-
-    st.markdown('<div class="section-title">Le tue arnie</div>', unsafe_allow_html=True)
     cols = st.columns(2)
     for i, hive in enumerate(ARNIE):
         with cols[i % 2]:
@@ -187,18 +189,15 @@ if page == "Home":
                 r = row.iloc[0]
                 notes = "" if str(r.get("note", "")) == "nan" else str(r.get("note", ""))
                 notes = notes[:100] + ("..." if len(notes) > 100 else "")
-                st.markdown(
-                    f"""
-                    <div class="card">
-                      <div style="font-weight:700;font-size:1.04rem;">{hive}</div>
-                      <div class="kpi">Ultimo: {r['data_controllo']}</div>
-                      <div class="kpi">Forza: {r['forza_colonia']}</div>
-                      <div class="kpi">Telaini: {r['telaini_coperti']}</div>
-                      <div class="small">{notes}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"""
+                <div class="card">
+                  <div style="font-weight:700;font-size:1.04rem;">{hive}</div>
+                  <div class="kpi">Ultimo: {r['data_controllo']}</div>
+                  <div class="kpi">Forza: {r['forza_colonia']}</div>
+                  <div class="kpi">Telaini: {r['telaini_coperti']}</div>
+                  <div class="small">{notes}</div>
+                </div>
+                """, unsafe_allow_html=True)
             if st.button(f"Apri scheda {hive}", key=f"home_{hive}"):
                 go_to_hive(hive)
 
@@ -211,14 +210,6 @@ if page == "Overview arnie":
         latest["telaini_num"] = to_num(latest["telaini_coperti"])
         latest["melario_num"] = to_num(latest["melario_percento"])
         st.dataframe(latest[["arnia","data_controllo","forza_colonia","telaini_coperti","celle_reali","regina_nuova","melario_presente","melario_percento","prossimo_controllo"]], use_container_width=True, hide_index=True)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("### Telaini coperti")
-            st.bar_chart(latest.set_index("arnia")[["telaini_num"]])
-        with c2:
-            st.markdown("### Melario %")
-            st.bar_chart(latest.set_index("arnia")[["melario_num"]])
-        st.markdown("### Apri una scheda arnia")
         cols = st.columns(len(ARNIE))
         for i, hive in enumerate(ARNIE):
             with cols[i]:
@@ -239,19 +230,16 @@ if page == "Scheda arnia":
         alerts, suggestions, next_visit = analyze_control(last)
         top1, top2 = st.columns([1.15, 1])
         with top1:
-            st.markdown(
-                f"""
-                <div class="card">
-                  <div style="font-weight:700;font-size:1.1rem;">{selected_hive}</div>
-                  <div class="kpi">Ultimo controllo: {last['data_controllo']}</div>
-                  <div class="kpi">Forza: {last['forza_colonia']}</div>
-                  <div class="kpi">Telaini: {last['telaini_coperti']}</div>
-                  <div class="kpi">Prossimo: {last['prossimo_controllo']}</div>
-                  <div class="small">{last['note']}</div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            st.markdown(f"""
+            <div class="card">
+              <div style="font-weight:700;font-size:1.1rem;">{selected_hive}</div>
+              <div class="kpi">Ultimo controllo: {last['data_controllo']}</div>
+              <div class="kpi">Forza: {last['forza_colonia']}</div>
+              <div class="kpi">Telaini: {last['telaini_coperti']}</div>
+              <div class="kpi">Prossimo: {last['prossimo_controllo']}</div>
+              <div class="small">{last['note']}</div>
+            </div>
+            """, unsafe_allow_html=True)
         with top2:
             st.markdown("### Consiglio AI rapido")
             for level, text in alerts:
@@ -260,8 +248,77 @@ if page == "Scheda arnia":
             for s in dict.fromkeys(suggestions):
                 st.write(f"- {s}")
             st.info(f"Prossimo controllo suggerito: **{next_visit}**")
-        st.markdown("### Storico controlli")
         st.dataframe(hive_df[["data_controllo","forza_colonia","telaini_coperti","celle_reali","regina_nuova","melario_presente","melario_percento","api_nervose","prossimo_controllo","note"]], use_container_width=True, hide_index=True)
+
+if page == "Gestione controlli":
+    st.subheader("Gestione controlli")
+    if controlli.empty:
+        st.info("Nessun controllo disponibile.")
+    else:
+        view = controlli.copy()
+        view["data_controllo_dt"] = pd.to_datetime(view["data_controllo"], errors="coerce")
+        view = view.sort_values("data_controllo_dt", ascending=False)
+        st.dataframe(view.drop(columns=["data_controllo_dt"]), use_container_width=True, hide_index=True)
+
+        options = [f"{r['arnia']} · {r['data_controllo']} · {str(r['id'])[:8]}" for _, r in view.iterrows()]
+        selected = st.selectbox("Seleziona un controllo", options)
+        row = view.iloc[options.index(selected)]
+        selected_id = row["id"]
+
+        tab1, tab2 = st.tabs(["Modifica", "Elimina"])
+
+        with tab1:
+            with st.form("modifica_controllo"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    arnia = st.selectbox("Arnia", ARNIE, index=ARNIE.index(row["arnia"]) if row["arnia"] in ARNIE else 0)
+                    data_controllo = st.date_input("Data controllo", value=safe_date(row["data_controllo"]), format="DD/MM/YYYY")
+                    prossimo_controllo = st.date_input("Prossimo controllo", value=safe_date(row["prossimo_controllo"]), format="DD/MM/YYYY")
+                    forza_colonia = st.selectbox("Forza colonia", FORZE, index=FORZE.index(row["forza_colonia"]) if row["forza_colonia"] in FORZE else 1)
+                    telaini_coperti = st.slider("Telaini coperti", 0, 10, int(float(row["telaini_coperti"])) if str(row["telaini_coperti"]) not in ["", "nan"] else 0)
+                with c2:
+                    melario_presente = st.checkbox("Melario presente", value=as_bool(row["melario_presente"]))
+                    melario_percento = st.slider("Melario pieno %", 0, 100, int(float(row["melario_percento"])) if str(row["melario_percento"]) not in ["", "nan"] else 0)
+                    covata_fresca = st.checkbox("Covata fresca", value=as_bool(row["covata_fresca"]))
+                    covata_opercolata = st.checkbox("Covata opercolata", value=as_bool(row["covata_opercolata"]))
+                    celle_reali = st.checkbox("Celle reali", value=as_bool(row["celle_reali"]))
+                    regina_vista = st.checkbox("Regina vista", value=as_bool(row["regina_vista"]))
+                    regina_nuova = st.checkbox("Regina nuova / sospetta nuova", value=as_bool(row["regina_nuova"]))
+                    api_nervose = st.checkbox("Api nervose", value=as_bool(row["api_nervose"]))
+                nutrizione = st.selectbox("Nutrizione", NUTRIZIONI, index=NUTRIZIONI.index(row["nutrizione"]) if row["nutrizione"] in NUTRIZIONI else 0)
+                note = st.text_area("Note", value="" if str(row["note"]) == "nan" else str(row["note"]), height=180)
+                if st.form_submit_button("Salva modifiche"):
+                    idx = controlli.index[controlli["id"] == selected_id]
+                    if len(idx) > 0:
+                        i = idx[0]
+                        controlli.at[i, "arnia"] = arnia
+                        controlli.at[i, "data_controllo"] = str(data_controllo)
+                        controlli.at[i, "prossimo_controllo"] = str(prossimo_controllo)
+                        controlli.at[i, "forza_colonia"] = forza_colonia
+                        controlli.at[i, "telaini_coperti"] = telaini_coperti
+                        controlli.at[i, "melario_presente"] = melario_presente
+                        controlli.at[i, "melario_percento"] = melario_percento
+                        controlli.at[i, "covata_fresca"] = covata_fresca
+                        controlli.at[i, "covata_opercolata"] = covata_opercolata
+                        controlli.at[i, "celle_reali"] = celle_reali
+                        controlli.at[i, "regina_vista"] = regina_vista
+                        controlli.at[i, "regina_nuova"] = regina_nuova
+                        controlli.at[i, "api_nervose"] = api_nervose
+                        controlli.at[i, "nutrizione"] = nutrizione
+                        controlli.at[i, "note"] = note
+                        save_csv(controlli, FILES["controlli"])
+                        st.success("Controllo modificato.")
+
+        with tab2:
+            st.warning("Questa azione elimina il controllo dal CSV.")
+            confirm = st.checkbox("Confermo di voler eliminare questo controllo")
+            if st.button("Elimina controllo"):
+                if not confirm:
+                    st.warning("Metti la spunta di conferma.")
+                else:
+                    controlli = controlli[controlli["id"] != selected_id].copy()
+                    save_csv(controlli, FILES["controlli"])
+                    st.success("Controllo eliminato.")
 
 if page == "Overview magazzino":
     st.subheader("Overview magazzino")
@@ -272,13 +329,6 @@ if page == "Overview magazzino":
         mag["quantita_num"] = to_num(mag["quantita"])
         mag["prezzo_totale_num"] = to_num(mag["prezzo_totale"])
         st.dataframe(mag[["data_acquisto","categoria","prodotto","quantita","unita_misura","prezzo_totale","fornitore_sito"]].sort_values("data_acquisto", ascending=False), use_container_width=True, hide_index=True)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("### Spesa per categoria")
-            st.bar_chart(mag.groupby("categoria", dropna=False)["prezzo_totale_num"].sum().reset_index().set_index("categoria"))
-        with c2:
-            st.markdown("### Quantità per categoria")
-            st.bar_chart(mag.groupby("categoria", dropna=False)["quantita_num"].sum().reset_index().set_index("categoria"))
 
 if page == "Nuovo controllo":
     st.subheader("Nuovo controllo")
