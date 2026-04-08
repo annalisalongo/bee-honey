@@ -23,11 +23,12 @@ FILES = {
     "offerte": DATA_DIR / "bee_deals_offerte.csv",
 }
 
-ARNIE = ["Bee Bianca", "Bee Verdina", "Bee Gialla", "Bee Verde"]
-FORZE = ["Debole", "Media", "Forte", "Fortissima"]
+ARNIE = ["BeeCalm Bianca", "BeeWild Verdina", "BeeSunny Gialla", "BeeFusion Verde"]FORZE = ["Debole", "Media", "Forte", "Fortissima"]
 NUTRIZIONI = ["Nessuna", "Candito", "Sciroppo", "Altro"]
 MAG_CATEGORIE = ["Fogli cerei", "Telaini", "Melari", "Barattoli", "Nutrizione", "Attrezzatura", "Altro"]
 UNITA = ["pz", "kg", "confezioni", "litri", "altro"]
+
+PAGES = ["Home", "Overview arnie", "Scheda arnia", "Overview magazzino", "Nuovo controllo", "Consiglio AI", "Magazzino", "Export Excel"]
 
 st.markdown("""
 <style>
@@ -133,12 +134,11 @@ def latest_controls(df):
     tmp = df.copy()
     tmp["data_controllo_dt"] = pd.to_datetime(tmp["data_controllo"], errors="coerce")
     tmp = tmp.sort_values("data_controllo_dt", ascending=False)
-    out = tmp.groupby("arnia", as_index=False).first()
-    return out
+    return tmp.groupby("arnia", as_index=False).first()
 
-def open_hive(hive_name: str):
+def go_to_hive(hive_name: str):
     st.session_state["selected_hive"] = hive_name
-    st.session_state["page"] = "Scheda arnia"
+    st.session_state["page_choice"] = "Scheda arnia"
     st.rerun()
 
 controlli = load_csv(FILES["controlli"], CONTROLLI_COLS)
@@ -150,14 +150,13 @@ offerte = load_csv(FILES["offerte"], OFFERTE_COLS)
 
 if "selected_hive" not in st.session_state:
     st.session_state["selected_hive"] = ARNIE[0]
-if "page" not in st.session_state:
-    st.session_state["page"] = "Home"
-
-pages = ["Home", "Overview arnie", "Scheda arnia", "Overview magazzino", "Nuovo controllo", "Consiglio AI", "Magazzino", "Export Excel"]
-page = st.sidebar.selectbox("Menu", pages, key="page")
+if "page_choice" not in st.session_state:
+    st.session_state["page_choice"] = "Home"
 
 st.title("🐝 Bee Honey")
 st.caption("Apiario, overview arnie, overview magazzino e scheda dedicata per ogni arnia.")
+
+page = st.sidebar.selectbox("Menu", PAGES, index=PAGES.index(st.session_state["page_choice"]) if st.session_state["page_choice"] in PAGES else 0, key="page_choice")
 
 if page == "Home":
     latest = latest_controls(controlli)
@@ -198,7 +197,7 @@ if page == "Home":
                     unsafe_allow_html=True
                 )
             if st.button(f"Apri scheda {hive}", key=f"home_{hive}"):
-                open_hive(hive)
+                go_to_hive(hive)
 
 if page == "Overview arnie":
     st.subheader("Overview arnie")
@@ -221,7 +220,7 @@ if page == "Overview arnie":
         for i, hive in enumerate(ARNIE):
             with cols[i]:
                 if st.button(hive, key=f"overview_{hive}"):
-                    open_hive(hive)
+                    go_to_hive(hive)
 
 if page == "Scheda arnia":
     st.subheader("Scheda arnia")
@@ -235,7 +234,6 @@ if page == "Scheda arnia":
         hive_df = hive_df.sort_values("data_controllo_dt", ascending=False)
         last = hive_df.iloc[0]
         alerts, suggestions, next_visit = analyze_control(last)
-
         top1, top2 = st.columns([1.15, 1])
         with top1:
             st.markdown(
@@ -259,23 +257,20 @@ if page == "Scheda arnia":
             for s in dict.fromkeys(suggestions):
                 st.write(f"- {s}")
             st.info(f"Prossimo controllo suggerito: **{next_visit}**")
-
         st.markdown("### Storico controlli")
-        view = hive_df[["data_controllo","forza_colonia","telaini_coperti","celle_reali","regina_nuova","melario_presente","melario_percento","api_nervose","prossimo_controllo","note"]].copy()
-        st.dataframe(view, use_container_width=True, hide_index=True)
-
+        st.dataframe(hive_df[["data_controllo","forza_colonia","telaini_coperti","celle_reali","regina_nuova","melario_presente","melario_percento","api_nervose","prossimo_controllo","note"]], use_container_width=True, hide_index=True)
         hive_df["telaini_num"] = to_num(hive_df["telaini_coperti"])
         hive_df["melario_num"] = to_num(hive_df["melario_percento"])
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown("### Andamento telaini")
             chart1 = hive_df[["data_controllo_dt","telaini_num"]].dropna().set_index("data_controllo_dt").sort_index()
             if not chart1.empty:
+                st.markdown("### Andamento telaini")
                 st.line_chart(chart1)
         with c2:
-            st.markdown("### Andamento melario %")
             chart2 = hive_df[["data_controllo_dt","melario_num"]].dropna().set_index("data_controllo_dt").sort_index()
             if not chart2.empty:
+                st.markdown("### Andamento melario %")
                 st.line_chart(chart2)
 
 if page == "Overview magazzino":
@@ -290,17 +285,15 @@ if page == "Overview magazzino":
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("### Spesa per categoria")
-            cat_spesa = mag.groupby("categoria", dropna=False)["prezzo_totale_num"].sum().reset_index()
-            st.bar_chart(cat_spesa.set_index("categoria"))
+            st.bar_chart(mag.groupby("categoria", dropna=False)["prezzo_totale_num"].sum().reset_index().set_index("categoria"))
         with c2:
             st.markdown("### Quantità per categoria")
-            cat_qta = mag.groupby("categoria", dropna=False)["quantita_num"].sum().reset_index()
-            st.bar_chart(cat_qta.set_index("categoria"))
+            st.bar_chart(mag.groupby("categoria", dropna=False)["quantita_num"].sum().reset_index().set_index("categoria"))
 
 if page == "Nuovo controllo":
     st.subheader("Nuovo controllo")
     with st.form("nuovo_controllo"):
-        c1,c2 = st.columns(2)
+        c1, c2 = st.columns(2)
         with c1:
             arnia = st.selectbox("Arnia", ARNIE, index=ARNIE.index(st.session_state["selected_hive"]))
             data_controllo = st.date_input("Data controllo", value=date.today(), format="DD/MM/YYYY")
@@ -352,7 +345,7 @@ if page == "Consiglio AI":
 if page == "Magazzino":
     st.subheader("Magazzino")
     with st.form("magazzino"):
-        c1,c2 = st.columns(2)
+        c1, c2 = st.columns(2)
         with c1:
             data_acquisto = st.date_input("Data acquisto", value=date.today(), format="DD/MM/YYYY")
             categoria = st.selectbox("Categoria", MAG_CATEGORIE)
@@ -360,7 +353,7 @@ if page == "Magazzino":
             fornitore_sito = st.text_input("Sito / negozio / fornitore")
         with c2:
             quantita = st.number_input("Quantità", min_value=0.0, step=1.0)
-            unita_misura = st.selectbox("Unità", ["pz", "kg", "confezioni", "litri", "altro"])
+            unita_misura = st.selectbox("Unità", UNITA)
             prezzo_totale = st.number_input("Costo totale €", min_value=0.0, step=0.5, format="%.2f")
             note = st.text_area("Note", height=100)
         if st.form_submit_button("Salva articolo in magazzino"):
