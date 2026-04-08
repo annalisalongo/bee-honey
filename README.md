@@ -1,10 +1,13 @@
-# Bee Honey AI
+# Bee Honey AI v2
 
-Versione con consigli automatici basati sui dati inseriti.
+Modifiche:
+- "Consiglio AI" rinominato in "Consiglio dell'esperto"
+- nuova sezione "Gestione controlli"
+- possibilità di cancellare un controllo con conferma
 
 ## Avvio
 ```bash
-cd ~/Downloads/bee_honey_ai
+cd ~/Downloads/bee_honey_ai_v2
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

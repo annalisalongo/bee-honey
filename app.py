@@ -69,15 +69,6 @@ def save_uploaded_files(files, folder_name: str, data_rif: str):
         saved_paths.append(str(out))
     return json.dumps(saved_paths, ensure_ascii=False)
 
-def parse_images(value):
-    if pd.isna(value) or not value:
-        return []
-    try:
-        parsed = json.loads(value)
-        return parsed if isinstance(parsed, list) else []
-    except Exception:
-        return []
-
 def euro(value):
     try:
         return f"€ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -164,7 +155,7 @@ offerte = load_csv(FILES["offerte"], OFFERTE_COLS)
 st.title("🐝 Bee Honey")
 st.caption("Apiario, scorte, miele, bilancio, offerte e consigli automatici.")
 
-menu = st.sidebar.radio("Menu", ["Home", "Arnie", "Nuovo controllo", "Consiglio AI", "Magazzino", "Miele invasettato", "Vendite", "Bilancio", "Bee Deals", "Export Excel"])
+menu = st.sidebar.radio("Menu", ["Home", "Arnie", "Nuovo controllo", "Consiglio dell'esperto", "Gestione controlli", "Magazzino", "Miele invasettato", "Vendite", "Bilancio", "Bee Deals", "Export Excel"])
 
 if menu == "Home":
     c1, c2, c3, c4 = st.columns(4)
@@ -172,27 +163,6 @@ if menu == "Home":
     c2.metric("Controlli", len(controlli))
     c3.metric("Acquisti", len(acquisti))
     c4.metric("Vendite", len(vendite))
-    st.markdown("### Le tue arnie")
-    today = pd.Timestamp(date.today())
-    tmp = controlli.copy()
-    if not tmp.empty:
-        tmp["data_controllo_dt"] = pd.to_datetime(tmp["data_controllo"], errors="coerce")
-        tmp["prossimo_controllo_dt"] = pd.to_datetime(tmp["prossimo_controllo"], errors="coerce")
-    cols = st.columns(2)
-    for i, arnia in enumerate(ARNIE):
-        with cols[i % 2]:
-            if tmp.empty or tmp[tmp["arnia"] == arnia].empty:
-                st.markdown(f'<div class="bee-card"><h3>{arnia}</h3><div class="bee-chip">Nessun dato</div></div>', unsafe_allow_html=True)
-            else:
-                sub = tmp[tmp["arnia"] == arnia].sort_values("data_controllo_dt", ascending=False)
-                last = sub.iloc[0]
-                stato = "OK"
-                box_class = "bee-ok"
-                if pd.notna(last["prossimo_controllo_dt"]):
-                    if last["prossimo_controllo_dt"] < today or last["prossimo_controllo_dt"] == today:
-                        stato = "Urgente" if last["prossimo_controllo_dt"] < today else "Oggi"
-                        box_class = "bee-warn"
-                st.markdown(f'<div class="bee-card"><h3>{arnia}</h3><div class="bee-chip">Ultimo: {last["data_controllo"]}</div><div class="bee-chip">Prossimo: {last["prossimo_controllo"]}</div><div class="{box_class}"><b>Stato:</b> {stato}</div></div>', unsafe_allow_html=True)
 
 if menu == "Arnie":
     arnia_filter = st.selectbox("Scegli arnia", ARNIE)
@@ -202,18 +172,12 @@ if menu == "Arnie":
     else:
         view["data_controllo_dt"] = pd.to_datetime(view["data_controllo"], errors="coerce")
         view = view.sort_values("data_controllo_dt", ascending=False)
-        last = view.iloc[0]
-        st.markdown(f'<div class="bee-card"><h3>{arnia_filter}</h3><div class="bee-chip">Ultimo controllo: {last["data_controllo"]}</div><div class="bee-chip">Prossimo: {last["prossimo_controllo"]}</div></div>', unsafe_allow_html=True)
         for _, row in view.iterrows():
             with st.expander(f'{row["data_controllo"]}'):
                 st.write(f"**Forza colonia:** {row['forza_colonia']}")
                 st.write(f"**Telaini coperti:** {row['telaini_coperti']}")
-                st.write(f"**Covata fresca:** {bool_si_no(row['covata_fresca'])}")
-                st.write(f"**Covata opercolata:** {bool_si_no(row['covata_opercolata'])}")
                 st.write(f"**Celle reali:** {bool_si_no(row['celle_reali'])}")
-                st.write(f"**Regina vista:** {bool_si_no(row['regina_vista'])}")
                 st.write(f"**Melario:** {bool_si_no(row['melario_presente'])} ({row['melario_percento']}%)")
-                st.write(f"**Api nervose:** {bool_si_no(row['api_nervose'])}")
                 st.write(f"**Note:** {row['note'] or '—'}")
 
 if menu == "Nuovo controllo":
@@ -246,9 +210,9 @@ if menu == "Nuovo controllo":
             save_csv(controlli, FILES["controlli"])
             st.success("Controllo salvato.")
 
-if menu == "Consiglio AI":
-    st.subheader("Consiglio AI")
-    st.caption("Assistente intelligente basato sui dati che inserisci.")
+if menu == "Consiglio dell'esperto":
+    st.subheader("Consiglio dell'esperto")
+    st.caption("Suggerimenti automatici basati sui dati dei tuoi controlli.")
     if controlli.empty:
         st.info("Salva almeno un controllo per avere consigli.")
     else:
@@ -259,7 +223,6 @@ if menu == "Consiglio AI":
         selected = st.selectbox("Scegli il controllo da analizzare", options)
         row = controlli_view.iloc[options.index(selected)]
         alerts, suggestions, next_visit = analyze_control(row)
-        st.markdown("### Analisi")
         for level, text in alerts:
             css = "bee-ok" if level == "ok" else "bee-warn" if level == "warn" else "bee-danger"
             st.markdown(f'<div class="{css}">{text}</div>', unsafe_allow_html=True)
@@ -268,70 +231,49 @@ if menu == "Consiglio AI":
             st.write(f"{i}. {suggestion}")
         st.info(f"Prossimo controllo suggerito: **{next_visit}**")
 
+if menu == "Gestione controlli":
+    st.subheader("Gestione controlli")
+    if controlli.empty:
+        st.info("Non ci sono controlli da gestire.")
+    else:
+        controlli_view = controlli.copy()
+        controlli_view["data_controllo_dt"] = pd.to_datetime(controlli_view["data_controllo"], errors="coerce")
+        controlli_view = controlli_view.sort_values("data_controllo_dt", ascending=False)
+        st.dataframe(controlli_view.drop(columns=["data_controllo_dt"]), use_container_width=True, hide_index=True)
+
+        options = [f"{row['arnia']} · {row['data_controllo']} · {row['id'][:8]}" for _, row in controlli_view.iterrows()]
+        selected_delete = st.selectbox("Seleziona un controllo da cancellare", options)
+        selected_id = controlli_view.iloc[options.index(selected_delete)]["id"]
+
+        confirm = st.checkbox("Confermo che voglio cancellare questo controllo")
+        if st.button("Cancella controllo"):
+            if not confirm:
+                st.warning("Metti la spunta di conferma prima di cancellare.")
+            else:
+                controlli = controlli[controlli["id"] != selected_id].copy()
+                save_csv(controlli, FILES["controlli"])
+                st.success("Controllo cancellato. Ricarica la pagina per vedere la lista aggiornata.")
+
 if menu == "Magazzino":
     st.subheader("Magazzino e acquisti")
-    with st.form("nuovo_acquisto"):
-        c1, c2 = st.columns(2)
-        with c1:
-            data_acquisto = st.date_input("Data acquisto", value=date.today(), format="DD/MM/YYYY", key="data_acquisto")
-            categoria = st.selectbox("Categoria", ["Fogli cerei", "Telaini", "Melari", "Barattoli", "Nutrizione", "Attrezzatura", "Altro"])
-            prodotto = st.text_input("Prodotto")
-            fornitore_sito = st.text_input("Sito / negozio / fornitore")
-        with c2:
-            quantita = st.number_input("Quantità", min_value=0.0, step=1.0)
-            unita_misura = st.selectbox("Unità", ["pz", "kg", "confezioni", "litri", "altro"])
-            prezzo_totale = st.number_input("Costo totale €", min_value=0.0, step=0.5, format="%.2f")
-            note = st.text_area("Note", height=120)
-        saved = st.form_submit_button("Salva acquisto")
-        if saved:
-            acquisti = pd.concat([acquisti, pd.DataFrame([{"id": uuid.uuid4().hex, "data_acquisto": str(data_acquisto), "categoria": categoria, "prodotto": prodotto, "quantita": quantita, "unita_misura": unita_misura, "prezzo_totale": prezzo_totale, "fornitore_sito": fornitore_sito, "note": note}])], ignore_index=True)
-            save_csv(acquisti, FILES["acquisti"])
-            st.success("Acquisto salvato.")
     if not acquisti.empty:
-        st.dataframe(acquisti.sort_values("data_acquisto", ascending=False), use_container_width=True, hide_index=True)
+        st.dataframe(acquisti, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nessun acquisto salvato.")
 
 if menu == "Miele invasettato":
-    st.subheader("Carico barattoli invasettati")
-    with st.form("carico_invasettato"):
-        c1, c2 = st.columns(2)
-        with c1:
-            data_invasettamento = st.date_input("Data invasettamento", value=date.today(), format="DD/MM/YYYY")
-            peso_grammi = st.selectbox("Peso barattolo (g)", PESI_BARATTOLI, key="peso_invas")
-        with c2:
-            quantita_invasettata = st.number_input("Quantità invasettata", min_value=0, step=1)
-            lotto = st.text_input("Lotto")
-        note = st.text_area("Note", height=120)
-        saved = st.form_submit_button("Salva carico")
-        if saved:
-            invasettato = pd.concat([invasettato, pd.DataFrame([{"id": uuid.uuid4().hex, "data_invasettamento": str(data_invasettamento), "peso_grammi": peso_grammi, "quantita_invasettata": quantita_invasettata, "lotto": lotto, "note": note}])], ignore_index=True)
-            save_csv(invasettato, FILES["invasettato"])
-            st.success("Carico salvato.")
+    st.subheader("Miele invasettato")
     if not invasettato.empty:
-        st.dataframe(invasettato.sort_values("data_invasettamento", ascending=False), use_container_width=True, hide_index=True)
+        st.dataframe(invasettato, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nessun carico salvato.")
 
 if menu == "Vendite":
-    st.subheader("Vendite miele")
-    with st.form("vendita"):
-        c1, c2 = st.columns(2)
-        with c1:
-            data_vendita = st.date_input("Data vendita", value=date.today(), format="DD/MM/YYYY")
-            peso_grammi = st.selectbox("Peso barattolo (g)", PESI_BARATTOLI)
-            quantita_venduta = st.number_input("Quantità venduta", min_value=0, step=1)
-        with c2:
-            prezzo_unitario = st.number_input("Prezzo unitario €", min_value=0.0, step=0.5, format="%.2f")
-            canale_vendita = st.selectbox("Canale vendita", ["Privati", "Amici", "Mercatino", "Regalo", "Altro"])
-        note = st.text_area("Note", height=120)
-        saved = st.form_submit_button("Salva vendita")
-        if saved:
-            vendite = pd.concat([vendite, pd.DataFrame([{"id": uuid.uuid4().hex, "data_vendita": str(data_vendita), "peso_grammi": peso_grammi, "quantita_venduta": quantita_venduta, "prezzo_unitario": prezzo_unitario, "canale_vendita": canale_vendita, "note": note}])], ignore_index=True)
-            save_csv(vendite, FILES["vendite"])
-            st.success("Vendita salvata.")
+    st.subheader("Vendite")
     if not vendite.empty:
-        tmp = vendite.copy()
-        tmp["quantita_venduta"] = to_num(tmp["quantita_venduta"])
-        tmp["prezzo_unitario"] = to_num(tmp["prezzo_unitario"])
-        tmp["incasso"] = tmp["quantita_venduta"] * tmp["prezzo_unitario"]
-        st.dataframe(tmp.sort_values("data_vendita", ascending=False), use_container_width=True, hide_index=True)
+        st.dataframe(vendite, use_container_width=True, hide_index=True)
+    else:
+        st.info("Nessuna vendita salvata.")
 
 if menu == "Bilancio":
     acquisti_tmp = acquisti.copy()
@@ -350,23 +292,12 @@ if menu == "Bilancio":
 
 if menu == "Bee Deals":
     st.subheader("Bee Deals beta")
-    tab1, tab2 = st.tabs(["Watchlist", "Nuova offerta"])
-    with tab1:
-        with st.form("watchlist_form"):
-            prodotto = st.text_input("Prodotto da monitorare")
-            prezzo_target = st.number_input("Prezzo target €", min_value=0.0, step=0.5, format="%.2f")
-            save_watch = st.form_submit_button("Salva watchlist")
-            if save_watch:
-                watchlist = pd.concat([watchlist, pd.DataFrame([{"id": uuid.uuid4().hex, "prodotto": prodotto, "categoria": "", "prezzo_target": prezzo_target, "negozio_preferito": "", "note": ""}])], ignore_index=True)
-                save_csv(watchlist, FILES["watchlist"])
-                st.success("Prodotto aggiunto alla watchlist.")
-        if not watchlist.empty:
-            st.dataframe(watchlist, use_container_width=True, hide_index=True)
-            for _, row in watchlist.iterrows():
-                query = quote_plus(str(row["prodotto"]))
-                st.markdown(f"- **{row['prodotto']}** · [Amazon](https://www.amazon.it/s?k={query}) · [eBay](https://www.ebay.it/sch/i.html?_nkw={query})")
-    with tab2:
-        st.info("Sezione offerte pronta per salvare occasioni manualmente nella versione successiva.")
+    if not watchlist.empty:
+        for _, row in watchlist.iterrows():
+            query = quote_plus(str(row["prodotto"]))
+            st.markdown(f"- **{row['prodotto']}** · [Amazon](https://www.amazon.it/s?k={query}) · [eBay](https://www.ebay.it/sch/i.html?_nkw={query})")
+    else:
+        st.info("Nessun prodotto in watchlist.")
 
 if menu == "Export Excel":
     st.subheader("Export Excel")
