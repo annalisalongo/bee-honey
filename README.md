@@ -1,14 +1,14 @@
-# Bee Honey AI v3
+# Bee Honey AI v4
 
 Modifiche:
-- "Consiglio dell'esperto"
-- cancellazione controllo
+- "Consiglio AI" ripristinato
+- controllo del codice eseguito
 - modifica controllo con form precompilato
-- consiglio aggiornato subito dopo la modifica
+- cancellazione controllo con conferma
 
 ## Avvio
 ```bash
-cd ~/Downloads/bee_honey_ai_v3
+cd ~/Downloads/bee_honey_ai_v4
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt

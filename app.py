@@ -26,6 +26,8 @@ FILES = {
 
 ARNIE = ["Bee Bianca", "Bee Verdina", "Bee Gialla", "Bee Verde"]
 PESI_BARATTOLI = [125, 250, 500, 1000]
+FORZE = ["Debole", "Media", "Forte", "Fortissima"]
+NUTRIZIONI = ["Nessuna", "Candito", "Sciroppo", "Altro"]
 
 st.markdown("""
 <style>
@@ -84,6 +86,14 @@ def to_num(series):
 def as_bool(value):
     return str(value) == "True"
 
+def safe_date(value, fallback=None):
+    if fallback is None:
+        fallback = date.today()
+    dt = pd.to_datetime(value, errors="coerce")
+    if pd.isna(dt):
+        return fallback
+    return dt.date()
+
 def analyze_control(row):
     alerts, suggestions, next_days = [], [], []
     forza = str(row.get("forza_colonia", ""))
@@ -138,6 +148,7 @@ def analyze_control(row):
         alerts.append(("ok", "Controllo nella norma."))
         suggestions.append("Continua con gestione regolare e monitoraggio settimanale.")
         next_days.append(7)
+
     next_visit = date.today() + timedelta(days=min(next_days))
     return alerts, suggestions, next_visit.strftime("%Y-%m-%d")
 
@@ -158,7 +169,10 @@ offerte = load_csv(FILES["offerte"], OFFERTE_COLS)
 st.title("🐝 Bee Honey")
 st.caption("Apiario, scorte, miele, bilancio, offerte e consigli automatici.")
 
-menu = st.sidebar.radio("Menu", ["Home", "Arnie", "Nuovo controllo", "Consiglio dell' AI", "Gestione controlli", "Magazzino", "Miele invasettato", "Vendite", "Bilancio", "Bee Deals", "Export Excel"])
+menu = st.sidebar.radio(
+    "Menu",
+    ["Home", "Arnie", "Nuovo controllo", "Consiglio AI", "Gestione controlli", "Magazzino", "Miele invasettato", "Vendite", "Bilancio", "Bee Deals", "Export Excel"]
+)
 
 if menu == "Home":
     c1, c2, c3, c4 = st.columns(4)
@@ -191,7 +205,7 @@ if menu == "Nuovo controllo":
             arnia = st.selectbox("Arnia", ARNIE)
             data_controllo = st.date_input("Data controllo", value=date.today(), format="DD/MM/YYYY")
             prossimo_controllo = st.date_input("Prossimo controllo", value=date.today(), format="DD/MM/YYYY")
-            forza_colonia = st.selectbox("Forza colonia", ["Debole", "Media", "Forte", "Fortissima"])
+            forza_colonia = st.selectbox("Forza colonia", FORZE)
             telaini_coperti = st.slider("Telaini coperti", 0, 10, 5)
         with c2:
             melario_presente = st.checkbox("Melario presente")
@@ -202,19 +216,37 @@ if menu == "Nuovo controllo":
             regina_vista = st.checkbox("Regina vista")
             regina_nuova = st.checkbox("Regina nuova / sospetta nuova")
             api_nervose = st.checkbox("Api nervose")
-        nutrizione = st.selectbox("Nutrizione", ["Nessuna", "Candito", "Sciroppo", "Altro"])
+        nutrizione = st.selectbox("Nutrizione", NUTRIZIONI)
         foto = st.file_uploader("Foto", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
         note = st.text_area("Note", height=180)
         submitted = st.form_submit_button("Salva controllo")
         if submitted:
             img_json = save_uploaded_files(foto, arnia, str(data_controllo))
-            new_row = {"id": uuid.uuid4().hex, "arnia": arnia, "data_controllo": str(data_controllo), "forza_colonia": forza_colonia, "telaini_coperti": telaini_coperti, "covata_fresca": covata_fresca, "covata_opercolata": covata_opercolata, "celle_reali": celle_reali, "regina_vista": regina_vista, "regina_nuova": regina_nuova, "melario_presente": melario_presente, "melario_percento": melario_percento, "nutrizione": nutrizione, "api_nervose": api_nervose, "note": note, "prossimo_controllo": str(prossimo_controllo), "foto": img_json}
+            new_row = {
+                "id": uuid.uuid4().hex,
+                "arnia": arnia,
+                "data_controllo": str(data_controllo),
+                "forza_colonia": forza_colonia,
+                "telaini_coperti": telaini_coperti,
+                "covata_fresca": covata_fresca,
+                "covata_opercolata": covata_opercolata,
+                "celle_reali": celle_reali,
+                "regina_vista": regina_vista,
+                "regina_nuova": regina_nuova,
+                "melario_presente": melario_presente,
+                "melario_percento": melario_percento,
+                "nutrizione": nutrizione,
+                "api_nervose": api_nervose,
+                "note": note,
+                "prossimo_controllo": str(prossimo_controllo),
+                "foto": img_json,
+            }
             controlli = pd.concat([controlli, pd.DataFrame([new_row])], ignore_index=True)
             save_csv(controlli, FILES["controlli"])
             st.success("Controllo salvato.")
 
-if menu == "Consiglio dell'AI":
-    st.subheader("Consiglio dell'AI")
+if menu == "Consiglio AI":
+    st.subheader("Consiglio AI")
     st.caption("Suggerimenti automatici basati sui dati dei tuoi controlli.")
     if controlli.empty:
         st.info("Salva almeno un controllo per avere consigli.")
@@ -256,23 +288,65 @@ if menu == "Gestione controlli":
             with st.form("modifica_controllo"):
                 c1, c2 = st.columns(2)
                 with c1:
-                    arnia = st.selectbox("Arnia", ARNIE, index=ARNIE.index(selected_row["arnia"]) if selected_row["arnia"] in ARNIE else 0, key="mod_arnia")
-                    data_controllo = st.date_input("Data controllo", value=pd.to_datetime(selected_row["data_controllo"]).date(), format="DD/MM/YYYY", key="mod_data")
-                    prossimo_controllo = st.date_input("Prossimo controllo", value=pd.to_datetime(selected_row["prossimo_controllo"]).date() if str(selected_row["prossimo_controllo"]) else date.today(), format="DD/MM/YYYY", key="mod_prossimo")
-                    forza_colonia = st.selectbox("Forza colonia", ["Debole", "Media", "Forte", "Fortissima"], index=["Debole", "Media", "Forte", "Fortissima"].index(selected_row["forza_colonia"]) if selected_row["forza_colonia"] in ["Debole", "Media", "Forte", "Fortissima"] else 1, key="mod_forza")
-                    telaini_coperti = st.slider("Telaini coperti", 0, 10, int(float(selected_row["telaini_coperti"])) if str(selected_row["telaini_coperti"]) else 0, key="mod_telaini")
+                    arnia = st.selectbox(
+                        "Arnia",
+                        ARNIE,
+                        index=ARNIE.index(selected_row["arnia"]) if selected_row["arnia"] in ARNIE else 0,
+                        key="mod_arnia",
+                    )
+                    data_controllo = st.date_input(
+                        "Data controllo",
+                        value=safe_date(selected_row["data_controllo"]),
+                        format="DD/MM/YYYY",
+                        key="mod_data",
+                    )
+                    prossimo_controllo = st.date_input(
+                        "Prossimo controllo",
+                        value=safe_date(selected_row["prossimo_controllo"]),
+                        format="DD/MM/YYYY",
+                        key="mod_prossimo",
+                    )
+                    forza_colonia = st.selectbox(
+                        "Forza colonia",
+                        FORZE,
+                        index=FORZE.index(selected_row["forza_colonia"]) if selected_row["forza_colonia"] in FORZE else 1,
+                        key="mod_forza",
+                    )
+                    telaini_coperti = st.slider(
+                        "Telaini coperti",
+                        0,
+                        10,
+                        int(float(selected_row["telaini_coperti"])) if str(selected_row["telaini_coperti"]) not in ["", "nan"] else 0,
+                        key="mod_telaini",
+                    )
                 with c2:
                     melario_presente = st.checkbox("Melario presente", value=as_bool(selected_row["melario_presente"]), key="mod_melario")
-                    melario_percento = st.slider("Melario pieno %", 0, 100, int(float(selected_row["melario_percento"])) if str(selected_row["melario_percento"]) else 0, key="mod_melario_pct")
+                    melario_percento = st.slider(
+                        "Melario pieno %",
+                        0,
+                        100,
+                        int(float(selected_row["melario_percento"])) if str(selected_row["melario_percento"]) not in ["", "nan"] else 0,
+                        key="mod_melario_pct",
+                    )
                     covata_fresca = st.checkbox("Covata fresca", value=as_bool(selected_row["covata_fresca"]), key="mod_covata_fresca")
                     covata_opercolata = st.checkbox("Covata opercolata", value=as_bool(selected_row["covata_opercolata"]), key="mod_covata_opercolata")
                     celle_reali = st.checkbox("Celle reali", value=as_bool(selected_row["celle_reali"]), key="mod_celle")
                     regina_vista = st.checkbox("Regina vista", value=as_bool(selected_row["regina_vista"]), key="mod_regina")
                     regina_nuova = st.checkbox("Regina nuova / sospetta nuova", value=as_bool(selected_row["regina_nuova"]), key="mod_regina_nuova")
                     api_nervose = st.checkbox("Api nervose", value=as_bool(selected_row["api_nervose"]), key="mod_nervose")
-                nutrizione_options = ["Nessuna", "Candito", "Sciroppo", "Altro"]
-                nutrizione = st.selectbox("Nutrizione", nutrizione_options, index=nutrizione_options.index(selected_row["nutrizione"]) if selected_row["nutrizione"] in nutrizione_options else 0, key="mod_nutrizione")
-                note = st.text_area("Note", value=str(selected_row["note"]) if str(selected_row["note"]) != "nan" else "", height=180, key="mod_note")
+
+                nutrizione = st.selectbox(
+                    "Nutrizione",
+                    NUTRIZIONI,
+                    index=NUTRIZIONI.index(selected_row["nutrizione"]) if selected_row["nutrizione"] in NUTRIZIONI else 0,
+                    key="mod_nutrizione",
+                )
+                note = st.text_area(
+                    "Note",
+                    value="" if str(selected_row["note"]) == "nan" else str(selected_row["note"]),
+                    height=180,
+                    key="mod_note",
+                )
 
                 saved_mod = st.form_submit_button("Salva modifiche")
                 if saved_mod:
@@ -298,7 +372,7 @@ if menu == "Gestione controlli":
                         st.success("Controllo modificato.")
                         updated_row = controlli.loc[i]
                         alerts, suggestions, next_visit = analyze_control(updated_row)
-                        st.markdown("### Nuovo consiglio dell'AI")
+                        st.markdown("### Nuovo Consiglio AI")
                         for level, text in alerts:
                             css = "bee-ok" if level == "ok" else "bee-warn" if level == "warn" else "bee-danger"
                             st.markdown(f'<div class="{css}">{text}</div>', unsafe_allow_html=True)
@@ -377,4 +451,9 @@ if menu == "Export Excel":
             watchlist.to_excel(writer, index=False, sheet_name="Watchlist")
             offerte.to_excel(writer, index=False, sheet_name="Offerte")
             bilancio.to_excel(writer, index=False, sheet_name="Bilancio")
-        st.download_button("Scarica Bee Honey.xlsx", data=output.getvalue(), file_name="Bee_Honey.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "Scarica Bee Honey.xlsx",
+            data=output.getvalue(),
+            file_name="Bee_Honey.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
