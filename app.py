@@ -23,7 +23,8 @@ FILES = {
     "offerte": DATA_DIR / "bee_deals_offerte.csv",
 }
 
-ARNIE = ["BeeCalm Bianca", "BeeWild Verdina", "BeeSunny Gialla", "BeeFusion Verde"]FORZE = ["Debole", "Media", "Forte", "Fortissima"]
+ARNIE = ["BeeCalm Bianca", "BeeWild Verdina", "BeeSunny Gialla", "BeeFusion Verde"]
+FORZE = ["Debole", "Media", "Forte", "Fortissima"]
 NUTRIZIONI = ["Nessuna", "Candito", "Sciroppo", "Altro"]
 MAG_CATEGORIE = ["Fogli cerei", "Telaini", "Melari", "Barattoli", "Nutrizione", "Attrezzatura", "Altro"]
 UNITA = ["pz", "kg", "confezioni", "litri", "altro"]
