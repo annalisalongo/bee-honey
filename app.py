@@ -3,7 +3,6 @@ import json
 import uuid
 from datetime import date, timedelta
 from pathlib import Path
-from urllib.parse import quote_plus
 
 import pandas as pd
 import streamlit as st
@@ -27,18 +26,22 @@ FILES = {
 ARNIE = ["Bee Bianca", "Bee Verdina", "Bee Gialla", "Bee Verde"]
 FORZE = ["Debole", "Media", "Forte", "Fortissima"]
 NUTRIZIONI = ["Nessuna", "Candito", "Sciroppo", "Altro"]
-PESI_BARATTOLI = [125, 250, 500, 1000]
 MAG_CATEGORIE = ["Fogli cerei", "Telaini", "Melari", "Barattoli", "Nutrizione", "Attrezzatura", "Altro"]
 UNITA = ["pz", "kg", "confezioni", "litri", "altro"]
 
 st.markdown("""
 <style>
-.main .block-container {padding-top:1rem;padding-bottom:2rem;max-width:1150px;}
-div[data-testid="stMetric"] {background:#fff;border:1px solid #eadfbe;border-radius:18px;padding:8px 12px;}
-div.stButton > button, .stDownloadButton button {width:100%;border-radius:14px;border:1px solid #d9b65d;background:#fff8e6;min-height:48px;font-weight:600;}
+.main .block-container {padding-top:1rem;padding-bottom:2rem;max-width:1180px;}
+.hero {background:linear-gradient(135deg,#fff8e8 0%,#fffdf7 100%);border:1px solid #eadfbe;border-radius:22px;padding:20px;margin-bottom:18px;}
+.card {border:1px solid #eadfbe;background:#fffdf8;border-radius:18px;padding:16px;margin-bottom:12px;}
+.kpi {display:inline-block;padding:4px 10px;border-radius:999px;border:1px solid #eadfbe;background:#fff;margin-right:6px;margin-bottom:6px;font-size:0.9rem;}
 .bee-ok {background:#e8f7ee;border-left:6px solid #2c9b62;padding:12px;border-radius:12px;margin-bottom:10px;}
 .bee-warn {background:#fff4df;border-left:6px solid #c98b00;padding:12px;border-radius:12px;margin-bottom:10px;}
 .bee-danger {background:#fdecec;border-left:6px solid #c94b4b;padding:12px;border-radius:12px;margin-bottom:10px;}
+.small {color:#6b604f;font-size:0.92rem;}
+.section-title {font-size:1.08rem;font-weight:700;margin:10px 0 12px 0;}
+div[data-testid="stMetric"] {background:#fff;border:1px solid #eadfbe;border-radius:18px;padding:8px 12px;}
+div.stButton > button, .stDownloadButton button {width:100%;border-radius:14px;border:1px solid #d9b65d;background:#fff8e6;min-height:46px;font-weight:600;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -67,9 +70,11 @@ def as_bool(v):
 def to_num(series):
     return pd.to_numeric(series, errors="coerce").fillna(0)
 
-def safe_date(value):
-    dt = pd.to_datetime(value, errors="coerce")
-    return dt.date() if pd.notna(dt) else date.today()
+def euro(value):
+    try:
+        return f"€ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except Exception:
+        return "€ 0,00"
 
 def save_uploaded_files(files, folder_name: str, data_rif: str):
     paths = []
@@ -90,14 +95,12 @@ def analyze_control(row):
     forza = str(row.get("forza_colonia", ""))
     telaini = pd.to_numeric(pd.Series([row.get("telaini_coperti", 0)]), errors="coerce").fillna(0).iloc[0]
     covata_fresca = as_bool(row.get("covata_fresca", ""))
-    covata_opercolata = as_bool(row.get("covata_opercolata", ""))
     celle_reali = as_bool(row.get("celle_reali", ""))
     regina_vista = as_bool(row.get("regina_vista", ""))
     regina_nuova = as_bool(row.get("regina_nuova", ""))
     melario = as_bool(row.get("melario_presente", ""))
     melario_pct = pd.to_numeric(pd.Series([row.get("melario_percento", 0)]), errors="coerce").fillna(0).iloc[0]
     api_nervose = as_bool(row.get("api_nervose", ""))
-
     if celle_reali and (forza in ["Forte", "Fortissima"] or telaini >= 8):
         alerts.append(("danger", "Rischio sciamatura alto: celle reali + colonia forte."))
         suggestions.append("Valuta divisione o controllo stretto delle celle reali.")
@@ -112,7 +115,7 @@ def analyze_control(row):
         next_days.append(4)
     if api_nervose:
         alerts.append(("warn", "Api nervose segnalate."))
-        suggestions.append("Al prossimo controllo verifica meteo, presenza regina e manipolazione più rapida.")
+        suggestions.append("Al prossimo controllo verifica meteo e manipolazione più rapida.")
         next_days.append(6)
     if not covata_fresca and not regina_vista and not regina_nuova:
         alerts.append(("warn", "Possibile problema regina: niente covata fresca e regina non vista."))
@@ -122,8 +125,16 @@ def analyze_control(row):
         alerts.append(("ok", "Controllo nella norma."))
         suggestions.append("Continua con monitoraggio regolare.")
         next_days.append(7)
-    next_visit = date.today() + timedelta(days=min(next_days))
-    return alerts, suggestions, next_visit.strftime("%Y-%m-%d")
+    return alerts, suggestions, str(date.today() + timedelta(days=min(next_days)))
+
+def latest_controls(df):
+    if df.empty:
+        return pd.DataFrame(columns=CONTROLLI_COLS)
+    tmp = df.copy()
+    tmp["data_controllo_dt"] = pd.to_datetime(tmp["data_controllo"], errors="coerce")
+    tmp = tmp.sort_values("data_controllo_dt", ascending=False)
+    out = tmp.groupby("arnia", as_index=False).first()
+    return out
 
 controlli = load_csv(FILES["controlli"], CONTROLLI_COLS)
 acquisti = load_csv(FILES["acquisti"], ACQUISTI_COLS)
@@ -133,16 +144,114 @@ watchlist = load_csv(FILES["watchlist"], WATCHLIST_COLS)
 offerte = load_csv(FILES["offerte"], OFFERTE_COLS)
 
 st.title("🐝 Bee Honey")
-menu = st.sidebar.radio("Menu", ["Home", "Nuovo controllo", "Consiglio AI", "Gestione controlli", "Magazzino", "Export Excel"])
+st.caption("Apiario, overview arnie, overview magazzino e home migliorata.")
+
+menu = st.sidebar.radio("Menu", ["Home", "Overview arnie", "Overview magazzino", "Nuovo controllo", "Consiglio AI", "Magazzino", "Export Excel"])
 
 if menu == "Home":
-    a,b,c,d = st.columns(4)
-    a.metric("Arnie", len(ARNIE))
-    b.metric("Controlli", len(controlli))
-    c.metric("Magazzino", len(acquisti))
-    d.metric("Vendite", len(vendite))
+    latest = latest_controls(controlli)
+    total_spese = float(to_num(acquisti.get("prezzo_totale", pd.Series(dtype=float))).sum()) if not acquisti.empty else 0.0
+    total_items = len(acquisti)
+    total_controls = len(controlli)
+    st.markdown(f"""
+    <div class="hero">
+      <h2 style="margin:0;">Bee Honey Dashboard</h2>
+      <div class="small" style="margin-top:6px;">Una panoramica veloce su apiario e magazzino.</div>
+      <div style="margin-top:12px;">
+        <span class="kpi">Arnie: {len(ARNIE)}</span>
+        <span class="kpi">Controlli: {total_controls}</span>
+        <span class="kpi">Articoli magazzino: {total_items}</span>
+        <span class="kpi">Spese: {euro(total_spese)}</span>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    c1, c2 = st.columns([1.3, 1])
+    with c1:
+        st.markdown('<div class="section-title">Stato rapido arnie</div>', unsafe_allow_html=True)
+        if latest.empty:
+            st.info("Nessun controllo disponibile.")
+        else:
+            cols = st.columns(2)
+            for i, (_, row) in enumerate(latest.iterrows()):
+                notes = "" if str(row.get("note", "")) == "nan" else str(row.get("note", ""))
+                notes = notes[:100] + ("..." if len(notes) > 100 else "")
+                with cols[i % 2]:
+                    st.markdown(
+                        f"""
+                        <div class="card">
+                          <div style="font-weight:700;font-size:1.04rem;">{row['arnia']}</div>
+                          <div class="kpi">Ultimo: {row['data_controllo']}</div>
+                          <div class="kpi">Forza: {row['forza_colonia']}</div>
+                          <div class="kpi">Telaini: {row['telaini_coperti']}</div>
+                          <div class="kpi">Prossimo: {row['prossimo_controllo']}</div>
+                          <div class="small">{notes}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+    with c2:
+        st.markdown('<div class="section-title">Magazzino rapido</div>', unsafe_allow_html=True)
+        if acquisti.empty:
+            st.info("Magazzino ancora vuoto.")
+        else:
+            mag = acquisti.copy()
+            mag["prezzo_totale_num"] = to_num(mag["prezzo_totale"])
+            summary = mag.groupby("categoria", dropna=False).agg(
+                articoli=("id", "count"),
+                spesa=("prezzo_totale_num", "sum")
+            ).reset_index()
+            st.dataframe(summary, use_container_width=True, hide_index=True)
+        st.markdown('<div class="section-title">Promemoria</div>', unsafe_allow_html=True)
+        if latest.empty:
+            st.info("Nessun promemoria.")
+        else:
+            shown = 0
+            for _, row in latest.iterrows():
+                p = pd.to_datetime(row.get("prossimo_controllo"), errors="coerce")
+                if pd.notna(p) and p <= pd.Timestamp(date.today()):
+                    st.markdown(f'<div class="bee-warn"><b>{row["arnia"]}</b><br>Controllo previsto per {row["prossimo_controllo"]}</div>', unsafe_allow_html=True)
+                    shown += 1
+            if shown == 0:
+                st.markdown('<div class="bee-ok">Nessun controllo urgente oggi.</div>', unsafe_allow_html=True)
+
+if menu == "Overview arnie":
+    st.subheader("Overview arnie")
+    latest = latest_controls(controlli)
+    if latest.empty:
+        st.info("Nessun controllo disponibile.")
+    else:
+        latest["telaini_num"] = to_num(latest["telaini_coperti"])
+        latest["melario_num"] = to_num(latest["melario_percento"])
+        st.dataframe(latest[["arnia","data_controllo","forza_colonia","telaini_coperti","celle_reali","regina_nuova","melario_presente","melario_percento","prossimo_controllo"]], use_container_width=True, hide_index=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("### Telaini coperti")
+            st.bar_chart(latest.set_index("arnia")[["telaini_num"]])
+        with c2:
+            st.markdown("### Melario %")
+            st.bar_chart(latest.set_index("arnia")[["melario_num"]])
+
+if menu == "Overview magazzino":
+    st.subheader("Overview magazzino")
+    if acquisti.empty:
+        st.info("Nessun articolo salvato in magazzino.")
+    else:
+        mag = acquisti.copy()
+        mag["quantita_num"] = to_num(mag["quantita"])
+        mag["prezzo_totale_num"] = to_num(mag["prezzo_totale"])
+        st.dataframe(mag[["data_acquisto","categoria","prodotto","quantita","unita_misura","prezzo_totale","fornitore_sito"]].sort_values("data_acquisto", ascending=False), use_container_width=True, hide_index=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("### Spesa per categoria")
+            cat_spesa = mag.groupby("categoria", dropna=False)["prezzo_totale_num"].sum().reset_index()
+            st.bar_chart(cat_spesa.set_index("categoria"))
+        with c2:
+            st.markdown("### Quantità per categoria")
+            cat_qta = mag.groupby("categoria", dropna=False)["quantita_num"].sum().reset_index()
+            st.bar_chart(cat_qta.set_index("categoria"))
 
 if menu == "Nuovo controllo":
+    st.subheader("Nuovo controllo")
     with st.form("nuovo_controllo"):
         c1,c2 = st.columns(2)
         with c1:
@@ -165,18 +274,17 @@ if menu == "Nuovo controllo":
         note = st.text_area("Note", height=180)
         if st.form_submit_button("Salva controllo"):
             img_json = save_uploaded_files(foto, arnia, str(data_controllo))
-            row = {
-                "id": uuid.uuid4().hex, "arnia": arnia, "data_controllo": str(data_controllo), "forza_colonia": forza_colonia,
-                "telaini_coperti": telaini_coperti, "covata_fresca": covata_fresca, "covata_opercolata": covata_opercolata,
-                "celle_reali": celle_reali, "regina_vista": regina_vista, "regina_nuova": regina_nuova,
-                "melario_presente": melario_presente, "melario_percento": melario_percento, "nutrizione": nutrizione,
-                "api_nervose": api_nervose, "note": note, "prossimo_controllo": str(prossimo_controllo), "foto": img_json
-            }
+            row = {"id": uuid.uuid4().hex, "arnia": arnia, "data_controllo": str(data_controllo), "forza_colonia": forza_colonia,
+                   "telaini_coperti": telaini_coperti, "covata_fresca": covata_fresca, "covata_opercolata": covata_opercolata,
+                   "celle_reali": celle_reali, "regina_vista": regina_vista, "regina_nuova": regina_nuova, "melario_presente": melario_presente,
+                   "melario_percento": melario_percento, "nutrizione": nutrizione, "api_nervose": api_nervose, "note": note,
+                   "prossimo_controllo": str(prossimo_controllo), "foto": img_json}
             controlli = pd.concat([controlli, pd.DataFrame([row])], ignore_index=True)
             save_csv(controlli, FILES["controlli"])
             st.success("Controllo salvato.")
 
 if menu == "Consiglio AI":
+    st.subheader("Consiglio AI")
     if controlli.empty:
         st.info("Salva almeno un controllo.")
     else:
@@ -194,52 +302,8 @@ if menu == "Consiglio AI":
             st.write(f"- {s}")
         st.info(f"Prossimo controllo suggerito: **{next_visit}**")
 
-if menu == "Gestione controlli":
-    if controlli.empty:
-        st.info("Nessun controllo disponibile.")
-    else:
-        view = controlli.copy()
-        view["data_controllo_dt"] = pd.to_datetime(view["data_controllo"], errors="coerce")
-        view = view.sort_values("data_controllo_dt", ascending=False)
-        st.dataframe(view.drop(columns=["data_controllo_dt"]), use_container_width=True, hide_index=True)
-        options = [f"{r['arnia']} · {r['data_controllo']} · {r['id'][:8]}" for _, r in view.iterrows()]
-        selected = st.selectbox("Seleziona un controllo", options)
-        row = view.iloc[options.index(selected)]
-        selected_id = row["id"]
-        tab1, tab2 = st.tabs(["Modifica", "Cancella"])
-        with tab1:
-            with st.form("modifica"):
-                forza = st.selectbox("Forza colonia", FORZE, index=FORZE.index(row["forza_colonia"]) if row["forza_colonia"] in FORZE else 1)
-                telaini = st.slider("Telaini coperti", 0, 10, int(float(row["telaini_coperti"])) if str(row["telaini_coperti"]) not in ["","nan"] else 0)
-                celle = st.checkbox("Celle reali", value=as_bool(row["celle_reali"]))
-                melario = st.checkbox("Melario presente", value=as_bool(row["melario_presente"]))
-                melario_pct = st.slider("Melario pieno %", 0, 100, int(float(row["melario_percento"])) if str(row["melario_percento"]) not in ["","nan"] else 0)
-                regina_nuova = st.checkbox("Regina nuova / sospetta nuova", value=as_bool(row["regina_nuova"]))
-                api_nervose = st.checkbox("Api nervose", value=as_bool(row["api_nervose"]))
-                note = st.text_area("Note", value="" if str(row["note"])=="nan" else str(row["note"]), height=160)
-                if st.form_submit_button("Salva modifiche"):
-                    idx = controlli.index[controlli["id"] == selected_id][0]
-                    controlli.at[idx, "forza_colonia"] = forza
-                    controlli.at[idx, "telaini_coperti"] = telaini
-                    controlli.at[idx, "celle_reali"] = celle
-                    controlli.at[idx, "melario_presente"] = melario
-                    controlli.at[idx, "melario_percento"] = melario_pct
-                    controlli.at[idx, "regina_nuova"] = regina_nuova
-                    controlli.at[idx, "api_nervose"] = api_nervose
-                    controlli.at[idx, "note"] = note
-                    save_csv(controlli, FILES["controlli"])
-                    st.success("Controllo modificato.")
-        with tab2:
-            confirm = st.checkbox("Confermo la cancellazione")
-            if st.button("Cancella controllo"):
-                if confirm:
-                    controlli = controlli[controlli["id"] != selected_id].copy()
-                    save_csv(controlli, FILES["controlli"])
-                    st.success("Controllo cancellato.")
-                else:
-                    st.warning("Metti la spunta di conferma.")
-
 if menu == "Magazzino":
+    st.subheader("Magazzino")
     with st.form("magazzino"):
         c1,c2 = st.columns(2)
         with c1:
@@ -263,6 +327,7 @@ if menu == "Magazzino":
         st.dataframe(view.sort_values("data_acquisto", ascending=False), use_container_width=True, hide_index=True)
 
 if menu == "Export Excel":
+    st.subheader("Export Excel")
     if st.button("Prepara file Excel"):
         total_spese = float(to_num(acquisti.get("prezzo_totale", pd.Series(dtype=float))).sum()) if not acquisti.empty else 0.0
         bilancio = pd.DataFrame({"voce": ["Totale spese"], "valore": [total_spese]})
