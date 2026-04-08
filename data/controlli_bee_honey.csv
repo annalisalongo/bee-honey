@@ -1,0 +1,5 @@
+id,arnia,data_controllo,forza_colonia,telaini_coperti,covata_fresca,covata_opercolata,celle_reali,regina_vista,regina_nuova,melario_presente,melario_percento,nutrizione,api_nervose,note,prossimo_controllo,foto
+1,BeeCalm Bianca,2026-04-07,Fortissima,8,True,True,True,False,False,True,0,Nessuna,False,Divisione fatta. Tolti 2 telaini di covata (fresca + opercolata con celle reali). Inserito melario. Arnia alleggerita per evitare sciamatura.,2026-04-12,
+2,BeeFusion Verde,2026-04-07,Media,6,True,True,True,False,True,False,0,Nessuna,False,"Nuova famiglia creata. Composizione: miele, covata, covata, nuovi telaini. Presenza celle reali. Orfana iniziale.",2026-04-12,
+3,BeeWild Verdina,2026-04-07,Media,8,True,True,False,False,True,False,0,Nessuna,False,Regina nuova nata. Inserita covata dalla Bianca per rinforzo. Arnia stabile.,2026-04-14,
+4,BeeSunny Gialla,2026-04-07,Media,0,False,False,False,False,False,True,0,Nessuna,True,Ispezione non completa per api nervose e buio. Inserito escludi regina e melario.,2026-04-12,
